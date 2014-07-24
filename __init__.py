@@ -30,12 +30,12 @@ else:
 import bpy
 
 bl_info = {
-    "name": "Import and SpaceBlend DEM (.IMG)",
-    "author": "Andrew Carter, Eric Ghazal, Jason Hedlund, Terence Luther",
-    "version": (1, 0, 0),
-    "blender": (2, 65, 0),
+    "name": "GDAL Importer",
+    "author": "Jay Laura, Andrew Carter, Eric Ghazal, Jason Hedlund, Terence Luther",
+    "version": (1, 1, 0),
+    "blender": (2, 7, 0),
     "warning": "Requires GDAL and System Python 2.7+ to be installed.",
-    "location": "File > Import > Import and SpaceBlend DEM (.IMG)",
+    "location": "File > Import > GDAL Import",
     "description": "Import DEM, apply texture, and create flyover.",
     "wiki_url": "",
     "tracker_url": "",
@@ -43,7 +43,7 @@ bl_info = {
 
 ############################## REGISTRATION #################################
 def menu_import(self, context):
-    self.layout.operator(ui_module.UI_Driver.bl_idname, text="Import and SpaceBlend DEM(.IMG)")
+    self.layout.operator(ui_module.UI_Driver.bl_idname, text="GDAL Import")
 
 def register():
     bpy.utils.register_module(__name__)

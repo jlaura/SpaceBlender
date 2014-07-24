@@ -1,16 +1,44 @@
+import glob
+import os
+
 import bpy
 from bpy.props import *
 from bpy_extras.io_utils import ImportHelper
 from . import blender_module
 from . import gdal_module
 from . import flyover_module
-import os
+
+
+
+
 
 class UI_Driver(bpy.types.Operator, ImportHelper):
     bl_idname = "import_dem.img"
-    bl_label  = "Import and SpaceBlend DEM (.IMG)"
+    bl_label  = "GDAL Importer"
     bl_options = {'UNDO'}
-    filter_glob = StringProperty(default="*.IMG", options={'HIDDEN'})
+
+
+
+    extensions = ['*.img', '*.tif', '*.tiff', '*.cub', '*.jp2']
+    extstring = ";".join(extensions)
+    filter_glob = StringProperty(default=extstring, options={'HIDDEN'})
+
+
+    def listObjects(self, context):
+        baseextensions = ['img', 'tif', 'tiff', 'cub', 'jp2']
+        #Function used to update the objects list (obj_list) used by the dropdown box.
+        objs = [] #list containing tuples of each object
+        if self.filepath:
+            basepath = os.path.dirname(self.filepath)
+
+            for i,f in enumerate(glob.glob(os.path.dirname(self.filepath) + '/*')):
+                try:
+                    ext = f.split('.')[1]
+                except:
+                    continue
+                if ext in baseextensions:
+                    objs.append((os.path.join(basepath, f), f, "Ortho Layer: {}".format(f)))
+        return objs
 
     #Color Control consider an option to say if you have GDAL installed or not -- possibly detect GDAL
     # Colors to possibly add
@@ -61,6 +89,12 @@ class UI_Driver(bpy.types.Operator, ImportHelper):
         default=False
         )
 
+
+    ortho = BoolProperty(name="Load Ortho",
+                         description="Instead of a color, load an orthoimage as a skin",
+                         default=False
+                         )
+
     #Render Resolution Lower the resolution the faster the render
     #Listed all popular 16:9 Formats and then a low resolution setting for testing
     resolution = EnumProperty(items=(
@@ -69,38 +103,64 @@ class UI_Driver(bpy.types.Operator, ImportHelper):
         ('480p', '480p', '854x480p Resolution'),
         ('360p', '360p', '640x360p Resolution'),
         ('180p', '180p', '320x180p Low Res good for testing')),
-        name='Resolution', description='Render Resolution', default='1080p')
+        name='Resolution', description='Render Resolution', default='720p')
 
     #Scaling Control
-    scale = FloatProperty(name="Scale",
-                          description="Scale the IMG",
-                          min=0.0001,
-                          max=10.0,
-                          soft_min=0.001,
-                          soft_max=100.0,
-                          default=0.01)
+    scale = IntProperty(name="Exaggeration",
+                          description="Z Exaggeration Factor",
+                          min=1,
+                          max=10,
+                          soft_min=1,
+                          soft_max=100,
+                          default=1)
 
-    bin_mode = EnumProperty(items=(
-        ('NONE', "None", "Don't bin the image"),
-        ('BIN2', "2x2", "use 2x2 binning to import the mesh"),
-        ('BIN6', "6x6", "use 6x6 binning to import the mesh"),
-        ('BIN6-FAST', "6x6 Fast", "use one sample per 6x6 region"),
-        ('BIN12', "12x12", "use 12x12 binning to import the mesh"),
-        ('BIN12-FAST', "12x12 Fast", "use one sample per 12x12 region")),
-        name="Binning", description="Import Binning", default='BIN12-FAST')
+    image_sample = FloatProperty(name='Scale Image',
+                              description='Sub (super) sample the image to a given percentage',
+                              min= 0.01,
+                              max= 2.0,
+                              soft_min = 0.015,
+                              soft_max = 2.1,
+                              default=0.5)
+
+    interp_method = EnumProperty(items=(
+        ('Nearest', 'Nearest', 'Nearest Neighbor Interpolation'),
+        ('Bilinear', 'Bilinear', 'Bilinear Interpolation'),
+        ('Bicubic', 'Bicubic', 'Bicubic Interpolation'),
+        ('Cubic', 'Cubic', 'Cubic Interpolation')),
+        name='Interp.', description='Sampling Interpolation Method', default='Cubic')
+
+    objectslist = EnumProperty(attr="obj_list", name="Objects", description="Choose object to edit", items=listObjects)
+
+    def draw(self, context):
+        """
+        Draws and updates the panel in the blender import GUI
+        """
+        layout = self.layout
+        modules = ['image_sample', 'interp_method', 'scale',
+                   'color_pattern', 'ortho', 'objectslist',
+                   'resolution','flyover_pattern', 'stars', 'mist']
+        for m in modules:
+            layout.prop(self, m)
 
     def execute(self, context):
+        extensions = ['*.img', '*.tif', '*.tiff', '*.cub']
         input_DEM = self.filepath
-        if input_DEM != bpy.path.ensure_ext(input_DEM, ".IMG"):
-            return {'CANCELLED'}
+        #TODO: This checker is not working for multiple file extensions.
+        #for ext in extensions:
+            #if input_DEM != bpy.path.ensure_ext(input_DEM, ext):
+                #return {'CANCELLED'}
         dtm_location = self.filepath
+        dtm_basepath = os.path.dirname(dtm_location)
 
         project_location = os.path.dirname(__file__)
         ################################################################################
         ## Use the GDAL tools to create hill-shade and color-relief and merge them with
         ## hsv_merge.py to use as a texture for the DTM. Creates DTM_TEXTURE.tiff
         ################################################################################
-        if self.color_pattern == 'NoColorPattern':
+        if self.ortho == True:
+            texture_location = self.objectslist
+            print(texture_location)
+        elif self.color_pattern == 'NoColorPattern':
             texture_location=None
             pass
         else:
@@ -122,7 +182,8 @@ class UI_Driver(bpy.types.Operator, ImportHelper):
         blender_module.load(self, context,
                             filepath=self.filepath,
                             scale=self.scale,
-                            bin_mode=self.bin_mode,
+                            image_sample=self.image_sample,
+                            interp_method = self.interp_method,
                             color_pattern=self.color_pattern,
                             flyover_pattern=self.flyover_pattern,
                             texture_location=texture_location,
@@ -132,5 +193,4 @@ class UI_Driver(bpy.types.Operator, ImportHelper):
                             mist=self.mist,
                             render=False,
                             animation=False)
-
         return {'FINISHED'}
